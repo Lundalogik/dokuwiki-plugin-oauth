@@ -7,9 +7,12 @@
  */
 
 // must be run within Dokuwiki
-if(!defined('DOKU_INC')) die();
+if (!defined('DOKU_INC')) {
+    die();
+}
 
-class action_plugin_oauth extends DokuWiki_Action_Plugin {
+class action_plugin_oauth extends DokuWiki_Action_Plugin
+{
 
     /**
      * Registers a callback function for a given event
@@ -17,17 +20,57 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
      * @param Doku_Event_Handler $controller DokuWiki's event controller object
      * @return void
      */
-    public function register(Doku_Event_Handler $controller) {
+    public function register(Doku_Event_Handler $controller)
+    {
         global $conf;
-        if($conf['authtype'] != 'oauth') return;
+        if ($conf['authtype'] != 'oauth') {
+            return;
+        }
 
         $conf['profileconfirm'] = false; // password confirmation doesn't work with oauth only users
 
+        $controller->register_hook('ACTION_HEADERS_SEND', 'BEFORE', $this, 'handle_auth_login_check');
         $controller->register_hook('DOKUWIKI_STARTED', 'BEFORE', $this, 'handle_start');
         $controller->register_hook('HTML_LOGINFORM_OUTPUT', 'BEFORE', $this, 'handle_loginform');
         $controller->register_hook('HTML_UPDATEPROFILEFORM_OUTPUT', 'BEFORE', $this, 'handle_profileform');
         $controller->register_hook('AUTH_USER_CHANGE', 'BEFORE', $this, 'handle_usermod');
         $controller->register_hook('ACTION_ACT_PREPROCESS', 'BEFORE', $this, 'handle_dologin');
+    }
+
+    public function handle_auth_login_check(Doku_Event &$event, $param)
+    {
+        global $auth;
+        global $ID;
+        global $ACT;
+
+        if (!is_a($auth, 'auth_plugin_oauth')) {
+            return;
+        }
+
+        $singleService = $this->getConf('singleService');
+
+        if ($singleService === '' || $this->getConf('autoLoginRedirect') == 0) {
+            return;
+        }
+
+        // Prevent login redirect when logging out
+        if ($ACT === 'logout') {
+            return;
+        }
+
+        $event->preventDefault();
+        $event->stopPropagation();
+
+        if (!isset($_SESSION[DOKU_COOKIE]['auth']) ||
+            $_SESSION[DOKU_COOKIE]['auth']['buid'] != auth_browseruid() ||
+            !isset($_SESSION[DOKU_COOKIE]['auth']['user'])
+        ) {
+            header('Pragma: no-cache');
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Location: /start?oauthlogin=' . $singleService);
+
+            exit();
+        }
     }
 
     /**
@@ -38,9 +81,9 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
      *                           handler was registered]
      * @return void
      */
-    public function handle_start(Doku_Event &$event, $param) {
-
-        if (isset($_SESSION[DOKU_COOKIE]['oauth-done']['do']) || !empty($_SESSION[DOKU_COOKIE]['oauth-done']['rev'])){
+    public function handle_start(Doku_Event &$event, $param)
+    {
+        if (isset($_SESSION[DOKU_COOKIE]['oauth-done']['do']) || !empty($_SESSION[DOKU_COOKIE]['oauth-done']['rev'])) {
             $this->restoreSessionEnvironment();
             return;
         }
@@ -48,33 +91,37 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
         $this->startOAuthLogin();
     }
 
-    private function startOAuthLogin() {
+    private function startOAuthLogin()
+    {
         global $INPUT, $ID;
 
         /** @var helper_plugin_oauth $hlp */
-        $hlp         = plugin_load('helper', 'oauth');
+        $hlp = plugin_load('helper', 'oauth');
         $servicename = $INPUT->str('oauthlogin');
-        $service     = $hlp->loadService($servicename);
-        if(is_null($service)) return;
+        $service = $hlp->loadService($servicename);
+        if (is_null($service)) {
+            return;
+        }
 
         // remember service in session
         session_start();
         $_SESSION[DOKU_COOKIE]['oauth-inprogress']['service'] = $servicename;
-        $_SESSION[DOKU_COOKIE]['oauth-inprogress']['id']      = $ID;
+        $_SESSION[DOKU_COOKIE]['oauth-inprogress']['id'] = $ID;
         session_write_close();
 
         $service->login();
     }
 
-    private function restoreSessionEnvironment() {
+    private function restoreSessionEnvironment()
+    {
         global $INPUT, $ACT, $TEXT, $PRE, $SUF, $SUM, $RANGE, $DATE_AT, $REV;
         $ACT = $_SESSION[DOKU_COOKIE]['oauth-done']['do'];
         $_REQUEST = $_SESSION[DOKU_COOKIE]['oauth-done']['$_REQUEST'];
 
-        $REV   = $INPUT->int('rev');
+        $REV = $INPUT->int('rev');
         $DATE_AT = $INPUT->str('at');
         $RANGE = $INPUT->str('range');
-        if($INPUT->post->has('wikitext')) {
+        if ($INPUT->post->has('wikitext')) {
             $TEXT = cleanText($INPUT->post->str('wikitext'));
         }
         $PRE = cleanText(substr($INPUT->post->str('prefix'), 0, -1));
@@ -92,18 +139,24 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
      *                           handler was registered]
      * @return void
      */
-    public function handle_usermod(Doku_Event &$event, $param) {
+    public function handle_usermod(Doku_Event &$event, $param)
+    {
         global $ACT;
         global $USERINFO;
         global $auth;
         global $INPUT;
 
-        if($event->data['type'] != 'modify') return;
-        if($ACT != 'profile') return;
+        if ($event->data['type'] != 'modify') {
+            return;
+        }
+
+        if ($ACT != 'profile') {
+            return;
+        }
 
         // we want to modify the user's groups
         $groups = $USERINFO['grps']; //current groups
-        if(isset($event->data['params'][1]['grps'])) {
+        if (isset($event->data['params'][1]['grps'])) {
             // something already defined new groups
             $groups = $event->data['params'][1]['grps'];
         }
@@ -112,17 +165,20 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
         $hlp = plugin_load('helper', 'oauth');
 
         // get enabled and configured services
-        $enabled  = $INPUT->arr('oauth_group');
+        $enabled = $INPUT->arr('oauth_group');
         $services = $hlp->listServices();
         $services = array_map(array($auth, 'cleanGroup'), $services);
 
         // add all enabled services as group, remove all disabled services
-        foreach($services as $service) {
-            if(isset($enabled[$service])) {
+        foreach ($services as $service) {
+            if (isset($enabled[$service])) {
                 $groups[] = $service;
             } else {
                 $idx = array_search($service, $groups);
-                if($idx !== false) unset($groups[$idx]);
+                if ($idx !== false) {
+                    unset($groups[$idx]);
+                }
+
             }
         }
         $groups = array_unique($groups);
@@ -140,7 +196,8 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
      *                           handler was registered]
      * @return void
      */
-    public function handle_profileform(Doku_Event &$event, $param) {
+    public function handle_profileform(Doku_Event &$event, $param)
+    {
         global $USERINFO;
         /** @var auth_plugin_authplain $auth */
         global $auth;
@@ -149,21 +206,23 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
         $hlp = plugin_load('helper', 'oauth');
 
         /** @var Doku_Form $form */
-        $form =& $event->data;
-        $pos  = $form->findElementByAttribute('type', 'submit');
+        $form = &$event->data;
+        $pos = $form->findElementByAttribute('type', 'submit');
 
         $services = $hlp->listServices();
-        if(!$services) return;
+        if (!$services) {
+            return;
+        }
 
         $form->insertElement($pos, form_closefieldset());
         $form->insertElement(++$pos, form_openfieldset(array('_legend' => $this->getLang('loginwith'), 'class' => 'plugin_oauth')));
-        foreach($services as $service) {
+        foreach ($services as $service) {
             $group = $auth->cleanGroup($service);
-            $elem  = form_makeCheckboxField(
-                'oauth_group['.$group.']',
+            $elem = form_makeCheckboxField(
+                'oauth_group[' . $group . ']',
                 1, $service, '', 'simple',
                 array(
-                    'checked' => (in_array($group, $USERINFO['grps'])) ? 'checked' : ''
+                    'checked' => (in_array($group, $USERINFO['grps'])) ? 'checked' : '',
                 )
             );
 
@@ -181,7 +240,8 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
      *                           handler was registered]
      * @return void
      */
-    public function handle_loginform(Doku_Event &$event, $param) {
+    public function handle_loginform(Doku_Event &$event, $param)
+    {
         global $conf;
 
         /** @var helper_plugin_oauth $hlp */
@@ -190,7 +250,7 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
         $enabledServices = $hlp->listServices();
 
         /** @var Doku_Form $form */
-        $form =& $event->data;
+        $form = &$event->data;
         $html = '';
 
         $validDomains = $hlp->getValidDomains();
@@ -201,14 +261,16 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
 
         if ($singleService == '') {
 
-            foreach($hlp->listServices() as $service) {
+            foreach ($hlp->listServices() as $service) {
                 $html .= $this->service_html($service);
             }
-            if(!$html) return;
+            if (!$html) {
+                return;
+            }
 
-        }else{
+        } else {
             if (in_array($singleService, $enabledServices, true) === false) {
-                msg($this->getLang('wrongConfig'),-1);
+                msg($this->getLang('wrongConfig'), -1);
                 return;
             }
             $form->_content = array();
@@ -220,7 +282,8 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
         $form->_content[] = form_closefieldset();
     }
 
-    function service_html ($service){
+    public function service_html($service)
+    {
         global $ID;
         $html = '';
         $html .= '<a href="' . wl($ID, array('oauthlogin' => $service)) . '" class="plugin_oauth_' . $service . '">';
@@ -230,24 +293,39 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin {
 
     }
 
-    public function handle_dologin(Doku_Event &$event, $param) {
+    public function handle_dologin(Doku_Event &$event, $param)
+    {
         global $lang;
         global $ID;
 
         $singleService = $this->getConf('singleService');
-        if ($singleService == '') return true;
+        if ($singleService == '') {
+            return true;
+        }
 
         $lang['btn_login'] = $this->getLang('loginButton') . $singleService;
 
-        if($event->data != 'login') return true;
+        $logoutRedirect = $this->getConf('logoutRedirect');
 
+        if ($event->data === 'logout' && $logoutRedirect !== '') {
+            auth_logoff();
 
+            header('Pragma: no-cache');
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Location: ' . $logoutRedirect);
+
+            exit();
+        }
+
+        if ($event->data != 'login') {
+            return true;
+        }
 
         /** @var helper_plugin_oauth $hlp */
         $hlp = plugin_load('helper', 'oauth');
         $enabledServices = $hlp->listServices();
         if (in_array($singleService, $enabledServices, true) === false) {
-            msg($this->getLang('wrongConfig'),-1);
+            msg($this->getLang('wrongConfig'), -1);
             return false;
         }
 

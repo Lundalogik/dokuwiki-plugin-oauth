@@ -58,7 +58,7 @@ $meta['singleService']       = array('multichoice',
                                      '_choices' => array(
                                          '',
                                          'Auth0',
-	                                 'Azure',
+	                                     'Azure',
                                          'Google',
                                          'Dataporten',
                                          'Facebook',
@@ -66,3 +66,5 @@ $meta['singleService']       = array('multichoice',
                                          'Yahoo',
                                          'Doorkeeper',
                                          'Keycloak'));
+$meta['autoLoginRedirect']   = array('onoff');
+$meta['logoutRedirect']      = array('string');
