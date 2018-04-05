@@ -67,7 +67,7 @@ class action_plugin_oauth extends DokuWiki_Action_Plugin
         ) {
             header('Pragma: no-cache');
             header('Cache-Control: no-cache, must-revalidate');
-            header('Location: /start?oauthlogin=' . $singleService);
+            header('Location: ' . $_SERVER['REQUEST_URI'] . '?oauthlogin=' . $singleService);
 
             exit();
         }
